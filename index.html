@@ -1,0 +1,118 @@
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/donmccurdy/aframe-extras@v7.0.0/dist/aframe-extras.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+    <style>
+      .a-enter-vr-button { display: none !important; }
+      
+      #websiteButton {
+        position: fixed;
+        bottom: 10px;
+        left: 10px;
+        padding: 10px 20px;
+        background-color: #007BFF;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 16px;
+        z-index: 999;
+        text-decoration: none;
+        font-family: sans-serif;
+      }
+
+      /* Keep canvas hidden as it's only for processing */
+      #chromaCanvas { display: none; }
+    </style>
+  </head>
+  <body>
+    <a-scene 
+      mindar-image="imageTargetSrc: targets.mind;" 
+      color-space="sRGB" 
+      renderer="colorManagement: true, physicallyCorrectLights" 
+      vr-mode-ui="enabled: false" 
+      device-orientation-permission-ui="enabled: false">
+      
+      <a-assets>
+        <video id="video1" src="vid2.mp4" crossorigin="anonymous" playsinline loop muted></video>
+      </a-assets>
+
+      <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+      <a-entity mindar-image-target="targetIndex: 0" id="target1">
+        <a-video id="chromaVideo" position="0 0 0" rotation="0 0 0" scale="1 .80 1" width="1" height="0.81"></a-video>
+      </a-entity>
+    </a-scene>
+
+    <a id="websiteButton" href="https://the-car-shop.odoo.com/" target="_blank">Visit Website</a>
+    <canvas id="chromaCanvas"></canvas>
+
+    <script>
+      const video = document.querySelector('#video1');
+      const canvas = document.getElementById('chromaCanvas');
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      const aVideoEntity = document.querySelector('#chromaVideo');
+      const target1 = document.querySelector('#target1');
+
+      let texture = null;
+
+      // Initialize canvas size when video loads
+      video.addEventListener('loadedmetadata', () => {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+      });
+
+      // Start video on first click to satisfy browser policies
+      window.addEventListener('click', () => {
+        video.play();
+      });
+
+      // AR Target Events
+      target1.addEventListener("targetFound", event => {
+        console.log("Target found");
+        video.play();
+        renderFrame();
+      });
+
+      target1.addEventListener("targetLost", event => {
+        console.log("Target lost");
+        video.pause();
+      });
+
+      function renderFrame() {
+        if (!video.paused && !video.ended) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          
+          let frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          let l = frame.data.length / 4;
+
+          for (let i = 0; i < l; i++) {
+            let r = frame.data[i * 4 + 0];
+            let g = frame.data[i * 4 + 1];
+            let b = frame.data[i * 4 + 2];
+            
+            // Chroma Key Logic: Detect green pixels
+            // Adjust these numbers if your green screen background isn't perfectly green
+            if (g > 100 && r < 150 && b < 150) {
+              frame.data[i * 4 + 3] = 0; // Transparent
+            }
+          }
+          
+          ctx.putImageData(frame, 0, 0);
+
+          // Update A-Frame Texture
+          if (!texture) {
+            texture = new THREE.CanvasTexture(canvas);
+            aVideoEntity.getObject3D('mesh').material.map = texture;
+            aVideoEntity.getObject3D('mesh').material.transparent = true;
+          }
+          
+          texture.needsUpdate = true;
+          requestAnimationFrame(renderFrame);
+        }
+      }
+    </script>
+  </body>
+</html>
